@@ -217,17 +217,46 @@
                 <canvas id="airQualityChart"></canvas>
             </div>
             
-            <!-- 3D Room Visualization -->
+            <!-- 3D Room Visualization and Heat Map -->
             <div class="floor-plan">
-                <h3>📍 Room Sensor Localization (3D)</h3>
-                <canvas id="room3d" width="800" height="500"></canvas>
-                <div style="text-align: center; margin-top: 15px;">
-                    <button onclick="rotateLeft()" style="padding: 10px 20px; margin: 5px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer;">⬅️ Rotate Left</button>
-                    <button onclick="rotateRight()" style="padding: 10px 20px; margin: 5px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer;">➡️ Rotate Right</button>
-                    <button onclick="resetView()" style="padding: 10px 20px; margin: 5px; background: #764ba2; color: white; border: none; border-radius: 5px; cursor: pointer;">🔄 Reset View</button>
+                <h3 style="text-align: center;">📍 Room Sensor Localization (3D) & Gas Leak Detection</h3>
+                <div style="display: flex; gap: 30px; justify-content: center; align-items: center; flex-wrap: wrap;">
+                    <!-- 3D Room -->
+                    <div style="flex: 1; min-width: 400px;">
+                        <canvas id="room3d" width="500" height="500"></canvas>
+                        <div style="text-align: center; margin-top: 15px;">
+                            <button onclick="rotateLeft()" style="padding: 10px 20px; margin: 5px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer;">⬅️ Rotate Left</button>
+                            <button onclick="rotateRight()" style="padding: 10px 20px; margin: 5px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer;">➡️ Rotate Right</button>
+                            <button onclick="resetView()" style="padding: 10px 20px; margin: 5px; background: #764ba2; color: white; border: none; border-radius: 5px; cursor: pointer;">🔄 Reset View</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Heat Map Grid -->
+                    <div style="flex: 1; min-width: 400px;">
+                        <canvas id="heatmap" width="500" height="500"></canvas>
+                        <div style="text-align: center; margin-top: 15px;">
+                            <div style="display: inline-flex; align-items: center; gap: 10px; padding: 10px; background: #f3f4f6; border-radius: 10px;">
+                                <span style="font-weight: bold;">Gas Concentration:</span>
+                                <div style="display: flex; gap: 5px;">
+                                    <div style="width: 30px; height: 20px; background: #1e3a8a;"></div>
+                                    <span>Low</span>
+                                </div>
+                                <div style="display: flex; gap: 5px;">
+                                    <div style="width: 30px; height: 20px; background: #22c55e;"></div>
+                                </div>
+                                <div style="display: flex; gap: 5px;">
+                                    <div style="width: 30px; height: 20px; background: #eab308;"></div>
+                                </div>
+                                <div style="display: flex; gap: 5px;">
+                                    <div style="width: 30px; height: 20px; background: #ef4444;"></div>
+                                    <span>High</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <p style="text-align: center; margin-top: 10px; color: #666;">
-                    🎮 Use buttons to rotate the room and see sensor positions in 3D
+                    🎮 Left: 3D sensor positions | Right: Real-time gas leak detection heat map (6×6 grid)
                 </p>
             </div>
             
@@ -379,6 +408,8 @@
                 if (data) {
                     updateDisplay(data);
                     updateChart(data);
+                    updateGasData(data.tvoc); // Update heat map with TVOC data
+                    drawHeatMap();
                     
                     // Hide loading, show content
                     document.getElementById('loading').style.display = 'none';
@@ -436,7 +467,7 @@
             
             // Draw title
             ctx.fillStyle = '#667eea';
-            ctx.font = 'bold 20px Arial';
+            ctx.font = 'bold 18px Arial';
             ctx.textAlign = 'center';
             ctx.fillText('Room Sensor Localization (3D)', canvas.width / 2, 30);
             
@@ -538,10 +569,125 @@
             const activeSensor = projectedSensors.find(s => s.active);
             if (activeSensor) {
                 ctx.fillStyle = '#ef4444';
-                ctx.font = 'bold 14px Arial';
+                ctx.font = 'bold 12px Arial';
                 ctx.textAlign = 'center';
-                ctx.fillText('M5Stack (Active)', activeSensor.proj.x, activeSensor.proj.y + 30);
+                ctx.fillText('M5Stack (Active)', activeSensor.proj.x, activeSensor.proj.y + 25);
             }
+        }
+        
+        // Heat Map Visualization
+        const heatmapCanvas = document.getElementById('heatmap');
+        const heatCtx = heatmapCanvas.getContext('2d');
+        const gridSize = 6;
+        let gasData = [];
+        
+        // Initialize gas data with random values
+        function initializeGasData() {
+            gasData = [];
+            for (let i = 0; i < gridSize; i++) {
+                gasData[i] = [];
+                for (let j = 0; j < gridSize; j++) {
+                    gasData[i][j] = 0;
+                }
+            }
+        }
+        
+        // Simulate gas leak at center (you can replace this with real sensor data)
+        function updateGasData(tvocValue) {
+            const centerX = 3;
+            const centerY = 3;
+            
+            // Use TVOC value to determine leak intensity
+            const leakIntensity = Math.min((tvocValue || 100) / 10, 100);
+            
+            for (let i = 0; i < gridSize; i++) {
+                for (let j = 0; j < gridSize; j++) {
+                    const distance = Math.sqrt(Math.pow(i - centerX, 2) + Math.pow(j - centerY, 2));
+                    // Gaussian distribution from leak source
+                    gasData[i][j] = leakIntensity * Math.exp(-distance * distance / 4);
+                }
+            }
+        }
+        
+        // Get color based on gas concentration
+        function getHeatColor(value) {
+            // Blue (low) -> Green -> Yellow -> Red (high)
+            if (value < 25) {
+                const t = value / 25;
+                return `rgb(${30 + t * 3}, ${58 + t * 139}, ${138 + t * 0})`;
+            } else if (value < 50) {
+                const t = (value - 25) / 25;
+                return `rgb(${33 + t * 1}, ${197 - t * 116}, ${138 - t * 54})`;
+            } else if (value < 75) {
+                const t = (value - 50) / 25;
+                return `rgb(${34 + t * 200}, ${81 + t * 96}, ${84 - t * 7})`;
+            } else {
+                const t = (value - 75) / 25;
+                return `rgb(${234 + t * 5}, ${177 - t * 109}, ${77 - t * 9})`;
+            }
+        }
+        
+        function drawHeatMap() {
+            heatCtx.clearRect(0, 0, heatmapCanvas.width, heatmapCanvas.height);
+            
+            // Draw title
+            heatCtx.fillStyle = '#667eea';
+            heatCtx.font = 'bold 18px Arial';
+            heatCtx.textAlign = 'center';
+            heatCtx.fillText('Gas Leak Detection (6×6 Grid)', heatmapCanvas.width / 2, 30);
+            
+            const cellSize = 60;
+            const startX = (heatmapCanvas.width - cellSize * gridSize) / 2;
+            const startY = 60;
+            
+            // Draw grid cells with heat colors
+            for (let i = 0; i < gridSize; i++) {
+                for (let j = 0; j < gridSize; j++) {
+                    const x = startX + j * cellSize;
+                    const y = startY + i * cellSize;
+                    
+                    // Draw cell
+                    heatCtx.fillStyle = getHeatColor(gasData[i][j]);
+                    heatCtx.fillRect(x, y, cellSize - 2, cellSize - 2);
+                    
+                    // Draw grid lines
+                    heatCtx.strokeStyle = '#333';
+                    heatCtx.lineWidth = 1;
+                    heatCtx.strokeRect(x, y, cellSize - 2, cellSize - 2);
+                    
+                    // Draw measurement point
+                    heatCtx.fillStyle = '#000';
+                    heatCtx.beginPath();
+                    heatCtx.arc(x + cellSize / 2, y + cellSize / 2, 3, 0, Math.PI * 2);
+                    heatCtx.fill();
+                }
+            }
+            
+            // Draw leak source marker (star)
+            const leakX = startX + 3 * cellSize + cellSize / 2;
+            const leakY = startY + 3 * cellSize + cellSize / 2;
+            heatCtx.fillStyle = '#fbbf24';
+            heatCtx.font = '24px Arial';
+            heatCtx.textAlign = 'center';
+            heatCtx.textBaseline = 'middle';
+            heatCtx.fillText('⭐', leakX, leakY);
+            
+            // Draw axes labels
+            heatCtx.fillStyle = '#333';
+            heatCtx.font = 'bold 14px Arial';
+            heatCtx.fillText('nz', heatmapCanvas.width / 2, startY + gridSize * cellSize + 30);
+            
+            heatCtx.save();
+            heatCtx.translate(startX - 30, heatmapCanvas.height / 2);
+            heatCtx.rotate(-Math.PI / 2);
+            heatCtx.fillText('ny', 0, 0);
+            heatCtx.restore();
+            
+            // Draw concentration scale
+            heatCtx.fillStyle = '#666';
+            heatCtx.font = '12px Arial';
+            heatCtx.textAlign = 'right';
+            heatCtx.fillText('C (mg/m³)', heatmapCanvas.width - 10, startY + 20);
         }
         
         function rotateLeft() {
@@ -568,7 +714,9 @@
         // Initialize everything
         window.onload = () => {
             initChart();
+            initializeGasData();
             drawRoom();
+            drawHeatMap();
             fetchData();
             
             // Refresh data every 3 seconds
