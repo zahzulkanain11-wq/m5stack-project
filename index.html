@@ -217,37 +217,17 @@
                 <canvas id="airQualityChart"></canvas>
             </div>
             
-            <!-- Floor Plan -->
+            <!-- 3D Room Visualization -->
             <div class="floor-plan">
-                <h3>📍 Sensor Location - Floor Plan</h3>
-                <div class="room-layout">
-                    <!-- Living Room -->
-                    <div class="room" style="left: 10px; top: 10px; width: 45%; height: 45%;">
-                        Living Room
-                    </div>
-                    
-                    <!-- Kitchen -->
-                    <div class="room" style="right: 10px; top: 10px; width: 45%; height: 45%;">
-                        Kitchen
-                    </div>
-                    
-                    <!-- Bedroom -->
-                    <div class="room" style="left: 10px; bottom: 10px; width: 45%; height: 45%;">
-                        Bedroom
-                    </div>
-                    
-                    <!-- Bathroom -->
-                    <div class="room" style="right: 10px; bottom: 10px; width: 45%; height: 45%;">
-                        Bathroom
-                    </div>
-                    
-                    <!-- M5Stack Sensor Marker (You can drag this!) -->
-                    <div class="sensor-marker" id="sensor" style="left: 25%; top: 25%;" title="M5Stack Sensor">
-                        📡
-                    </div>
+                <h3>📍 Room Sensor Localization (3D)</h3>
+                <canvas id="room3d" width="800" height="500"></canvas>
+                <div style="text-align: center; margin-top: 15px;">
+                    <button onclick="rotateLeft()" style="padding: 10px 20px; margin: 5px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer;">⬅️ Rotate Left</button>
+                    <button onclick="rotateRight()" style="padding: 10px 20px; margin: 5px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer;">➡️ Rotate Right</button>
+                    <button onclick="resetView()" style="padding: 10px 20px; margin: 5px; background: #764ba2; color: white; border: none; border-radius: 5px; cursor: pointer;">🔄 Reset View</button>
                 </div>
-                <p style="text-align: center; margin-top: 15px; color: #666;">
-                    ⬆️ Drag the red sensor marker to show where your M5Stack is located
+                <p style="text-align: center; margin-top: 10px; color: #666;">
+                    🎮 Use buttons to rotate the room and see sensor positions in 3D
                 </p>
             </div>
             
@@ -409,42 +389,186 @@
             }
         }
         
-        // Make sensor marker draggable
-        function makeDraggable() {
-            const sensor = document.getElementById('sensor');
-            const layout = document.querySelector('.room-layout');
-            let isDragging = false;
+        // 3D Room Visualization
+        let rotationAngle = 0;
+        const canvas = document.getElementById('room3d');
+        const ctx = canvas.getContext('2d');
+        
+        // Sensor positions in 3D space (12 sensors like your image)
+        const sensors = [
+            // Outer cube corners
+            {x: -150, y: -100, z: -150, active: false},
+            {x: 0, y: -100, z: -150, active: false},
+            {x: 150, y: -100, z: -150, active: false},
+            {x: -150, y: -100, z: 0, active: false},
+            {x: 150, y: -100, z: 0, active: false},
+            {x: -150, y: -100, z: 150, active: false},
+            {x: 0, y: -100, z: 150, active: false},
+            {x: 150, y: -100, z: 150, active: false},
+            // Inner cube corners
+            {x: -75, y: 0, z: -75, active: false},
+            {x: 75, y: 0, z: -75, active: false},
+            {x: -75, y: 0, z: 75, active: false},
+            {x: 75, y: 0, z: 75, active: true}, // Active M5Stack sensor
+            // Center sensor
+            {x: 0, y: 50, z: 0, active: false}
+        ];
+        
+        function project3D(x, y, z, angle) {
+            // Rotate around Y axis
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+            const newX = x * cos - z * sin;
+            const newZ = x * sin + z * cos;
             
-            sensor.addEventListener('mousedown', (e) => {
-                isDragging = true;
-                sensor.style.cursor = 'grabbing';
-            });
-            
-            document.addEventListener('mousemove', (e) => {
-                if (isDragging) {
-                    const rect = layout.getBoundingClientRect();
-                    let x = e.clientX - rect.left - 20;
-                    let y = e.clientY - rect.top - 20;
-                    
-                    // Keep within bounds
-                    x = Math.max(0, Math.min(x, rect.width - 40));
-                    y = Math.max(0, Math.min(y, rect.height - 40));
-                    
-                    sensor.style.left = x + 'px';
-                    sensor.style.top = y + 'px';
-                }
-            });
-            
-            document.addEventListener('mouseup', () => {
-                isDragging = false;
-                sensor.style.cursor = 'pointer';
-            });
+            // Perspective projection
+            const scale = 300 / (300 + newZ);
+            return {
+                x: canvas.width / 2 + newX * scale,
+                y: canvas.height / 2 + y * scale,
+                z: newZ,
+                scale: scale
+            };
         }
+        
+        function drawRoom() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw title
+            ctx.fillStyle = '#667eea';
+            ctx.font = 'bold 20px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('Room Sensor Localization (3D)', canvas.width / 2, 30);
+            
+            // Draw outer cube edges
+            const outerCorners = [
+                {x: -150, y: -100, z: -150},
+                {x: 150, y: -100, z: -150},
+                {x: 150, y: -100, z: 150},
+                {x: -150, y: -100, z: 150}
+            ];
+            
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            for (let i = 0; i < outerCorners.length; i++) {
+                const curr = project3D(outerCorners[i].x, outerCorners[i].y, outerCorners[i].z, rotationAngle);
+                const next = project3D(outerCorners[(i + 1) % outerCorners.length].x, outerCorners[(i + 1) % outerCorners.length].y, outerCorners[(i + 1) % outerCorners.length].z, rotationAngle);
+                if (i === 0) ctx.moveTo(curr.x, curr.y);
+                ctx.lineTo(next.x, next.y);
+            }
+            ctx.stroke();
+            
+            // Draw inner cube edges
+            const innerCorners = [
+                {x: -75, y: 0, z: -75},
+                {x: 75, y: 0, z: -75},
+                {x: 75, y: 0, z: 75},
+                {x: -75, y: 0, z: 75}
+            ];
+            
+            ctx.strokeStyle = '#666';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            for (let i = 0; i < innerCorners.length; i++) {
+                const curr = project3D(innerCorners[i].x, innerCorners[i].y, innerCorners[i].z, rotationAngle);
+                const next = project3D(innerCorners[(i + 1) % innerCorners.length].x, innerCorners[(i + 1) % innerCorners.length].y, innerCorners[(i + 1) % innerCorners.length].z, rotationAngle);
+                if (i === 0) ctx.moveTo(curr.x, curr.y);
+                ctx.lineTo(next.x, next.y);
+            }
+            ctx.stroke();
+            
+            // Connect outer to inner corners
+            ctx.strokeStyle = '#999';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < 4; i++) {
+                ctx.beginPath();
+                const outer = project3D(outerCorners[i].x, outerCorners[i].y, outerCorners[i].z, rotationAngle);
+                const inner = project3D(innerCorners[i].x, innerCorners[i].y, innerCorners[i].z, rotationAngle);
+                ctx.moveTo(outer.x, outer.y);
+                ctx.lineTo(inner.x, inner.y);
+                ctx.stroke();
+            }
+            
+            // Sort sensors by depth for proper rendering
+            const projectedSensors = sensors.map(s => ({
+                ...s,
+                proj: project3D(s.x, s.y, s.z, rotationAngle)
+            })).sort((a, b) => a.proj.z - b.proj.z);
+            
+            // Draw sensors
+            projectedSensors.forEach(sensor => {
+                const size = 12 * sensor.proj.scale;
+                
+                if (sensor.active) {
+                    // Active M5Stack sensor (red with pulse)
+                    ctx.fillStyle = '#ef4444';
+                    ctx.strokeStyle = '#dc2626';
+                    ctx.lineWidth = 2;
+                    
+                    // Glow effect
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = '#ef4444';
+                } else {
+                    // Inactive sensors (gray)
+                    ctx.fillStyle = '#6b7280';
+                    ctx.strokeStyle = '#4b5563';
+                    ctx.lineWidth = 1.5;
+                    ctx.shadowBlur = 0;
+                }
+                
+                // Draw sensor
+                ctx.beginPath();
+                ctx.arc(sensor.proj.x, sensor.proj.y, size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+                
+                // Reset shadow
+                ctx.shadowBlur = 0;
+                
+                // Draw sensor icon
+                ctx.fillStyle = 'white';
+                ctx.font = `${size * 1.2}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('📡', sensor.proj.x, sensor.proj.y);
+            });
+            
+            // Draw label for active sensor
+            const activeSensor = projectedSensors.find(s => s.active);
+            if (activeSensor) {
+                ctx.fillStyle = '#ef4444';
+                ctx.font = 'bold 14px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('M5Stack (Active)', activeSensor.proj.x, activeSensor.proj.y + 30);
+            }
+        }
+        
+        function rotateLeft() {
+            rotationAngle -= 0.2;
+            drawRoom();
+        }
+        
+        function rotateRight() {
+            rotationAngle += 0.2;
+            drawRoom();
+        }
+        
+        function resetView() {
+            rotationAngle = 0;
+            drawRoom();
+        }
+        
+        // Auto-rotate slowly
+        setInterval(() => {
+            rotationAngle += 0.005;
+            drawRoom();
+        }, 50);
         
         // Initialize everything
         window.onload = () => {
             initChart();
-            makeDraggable();
+            drawRoom();
             fetchData();
             
             // Refresh data every 3 seconds
